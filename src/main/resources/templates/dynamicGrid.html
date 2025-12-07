@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>시설 관리 대장</title>
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+        th { background-color: #eee; }
+        .hidden-col { display: none; }
+        .control-panel { background: #f4f4f4; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .control-panel label { margin-right: 15px; display: inline-block; }
+    </style>
+</head>
+<body>
+
+<h2>🏢 시설 자산 관리 대장</h2>
+<div style="margin-bottom: 10px;">
+    현재 접속자 권한: <span th:text="${#authentication != null ? #authentication.name : 'Anonymous'}"></span>
+    (<span th:text="${#authentication != null ? #authentication.authorities : 'None'}"></span>)
+    <a href="/logout" style="margin-left: 10px; color: red;">로그아웃</a>
+</div>
+
+<div class="control-panel" id="columnControls">
+    <strong>👁️ 표시 설정: </strong>
+</div>
+
+<table id="dataTable">
+    <thead><tr id="tableHead"></tr></thead>
+    <tbody id="tableBody"></tbody>
+</table>
+
+<script th:inline="javascript">
+    /* [주의] Thymeleaf 파싱 에러 방지를 위한 CDATA 주석 처리
+       또는 unescaped text 사용
+    */
+
+    // Controller에서 String으로 보냈다면 JSON.parse 필요
+    // (만약 Controller에서 객체(List/Map) 자체를 보냈다면 JSON.parse 제거해야 함)
+    const tableData = JSON.parse([[${tableDataJson}]]);
+    const allowedColumns = JSON.parse([[${allowedColumnsJson}]]);
+    const hiddenColumns = JSON.parse([[${hiddenColumnsJson}]]);
+
+    const tableHead = document.getElementById('tableHead');
+    const tableBody = document.getElementById('tableBody');
+    const columnControls = document.getElementById('columnControls');
+
+    function init() {
+        renderControls();
+        renderTable();
+    }
+
+    function renderControls() {
+        allowedColumns.forEach(col => {
+            const label = document.createElement('label');
+            const checkbox = document.createElement('input');
+
+            // [수정 2] 자바스크립트로 생성하는 태그는 상관없으나,
+            // 혹시 모르니 JS 로직은 그대로 둠.
+            checkbox.type = 'checkbox';
+            checkbox.value = col;
+            checkbox.checked = !hiddenColumns.includes(col);
+
+            checkbox.addEventListener('change', (e) => {
+                toggleColumn(col, e.target.checked);
+            });
+
+            label.appendChild(checkbox);
+            label.appendChild(document.createTextNode(" " + col));
+            columnControls.appendChild(label);
+        });
+    }
+
+    function renderTable() {
+        // 헤더
+        allowedColumns.forEach(col => {
+            const th = document.createElement('th');
+            th.textContent = col;
+            th.dataset.col = col;
+            if (hiddenColumns.includes(col)) th.classList.add('hidden-col');
+            tableHead.appendChild(th);
+        });
+
+        // 바디
+        tableData.forEach(row => {
+            const tr = document.createElement('tr');
+            allowedColumns.forEach(col => {
+                const td = document.createElement('td');
+                td.textContent = row[col] !== null ? row[col] : "";
+                td.dataset.col = col;
+                if (hiddenColumns.includes(col)) td.classList.add('hidden-col');
+                tr.appendChild(td);
+            });
+            tableBody.appendChild(tr);
+        });
+    }
+
+    function toggleColumn(colName, isVisible) {
+        const cells = document.querySelectorAll(`[data-col="${colName}"]`);
+        cells.forEach(cell => {
+            if (isVisible) cell.classList.remove('hidden-col');
+            else cell.classList.add('hidden-col');
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
