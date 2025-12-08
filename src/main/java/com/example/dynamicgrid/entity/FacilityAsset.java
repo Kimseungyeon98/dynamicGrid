@@ -1,15 +1,13 @@
-package com.example.dynamicgrid.main;
+package com.example.dynamicgrid.entity;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
-
+import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
-@Getter@Setter
 @Table(name = "facility_asset")
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor
 public class FacilityAsset {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -24,7 +22,7 @@ public class FacilityAsset {
     private LocalDate installDate;
     private String status;
 
-    // 민감 정보 (관리자만 접근)
+    // 민감 정보
     private BigDecimal purchaseCost;
     private String contractDetails;
 }
