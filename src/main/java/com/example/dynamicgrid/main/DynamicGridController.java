@@ -1,33 +1,29 @@
 package com.example.dynamicgrid.main;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-import tools.jackson.databind.ObjectMapper;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.util.Map;
 
 @Controller
+@RequiredArgsConstructor
 public class DynamicGridController {
 
-    @Autowired
-    private DynamicGridService service;
-    @Autowired
-    private ObjectMapper objectMapper;
+    private final DynamicGridService service;
 
-    @GetMapping("/")
-    public String index(Model model){
-        // 1. 데이터 (권한에 따라 민감 데이터는 Map에 존재하지 않음)
-        String tableDataJson = objectMapper.writeValueAsString(service.getFilteredAssets());
+    @GetMapping("/dynamicGrid")
+    public String dynamicGrid(Model model) {
+        // DB에 저장된 그리드 코드 (예: FACILITY_ASSET_GRID)
+        String gridCode = "FACILITY_ASSET_GRID";
 
-        // 2. 권한 설정 (렌더링 가능한 컬럼 목록)
-        String allowedColumnsJson = objectMapper.writeValueAsString(service.getAllowedColumns());
+        // Service에서 데이터+설정 모두 가져오기
+        Map<String, Object> gridContext = service.getGridContext(gridCode);
 
-        // 3. 사용자 설정 (hidden 처리할 컬럼 목록)
-        String hiddenColumnsJson = objectMapper.writeValueAsString(service.getUserHiddenColumns());
-
-        model.addAttribute("tableDataJson", tableDataJson);
-        model.addAttribute("allowedColumnsJson", allowedColumnsJson);
-        model.addAttribute("hiddenColumnsJson", hiddenColumnsJson);
+        // Thymeleaf로 전달
+        model.addAttribute("gridContext", gridContext);
 
         return "dynamicGrid";
     }

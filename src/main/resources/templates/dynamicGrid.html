@@ -2,109 +2,181 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8" />
-    <title>시설 관리 대장</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Dynamic Grid System</title>
+
     <style>
         body { font-family: 'Noto Sans KR', sans-serif; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-        th { background-color: #eee; }
-        .hidden-col { display: none; }
-        .control-panel { background: #f4f4f4; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-        .control-panel label { margin-right: 15px; display: inline-block; }
+
+        /* 레이아웃 */
+        .grid-container { display: flex; flex-direction: column; gap: 10px; }
+
+        /* 컨트롤 패널 */
+        .control-panel { background: #f8f9fa; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .control-panel h4 { margin: 0 0 10px 0; }
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 15px; }
+        .checkbox-group label { cursor: pointer; }
+
+        /* 테이블 스타일 */
+        table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+        th, td { border: 1px solid #ccc; padding: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        th { background-color: #eee; text-align: center; font-weight: bold; }
+
+        /* 숨김 처리 클래스 */
+        .user-hidden { display: none; }
     </style>
 </head>
 <body>
 
-<h2>🏢 시설 자산 관리 대장</h2>
-<div style="margin-bottom: 10px;">
-    현재 접속자 권한: <span th:text="${#authentication != null ? #authentication.name : 'Anonymous'}"></span>
-    (<span th:text="${#authentication != null ? #authentication.authorities : 'None'}"></span>)
-    <a href="/logout" style="margin-left: 10px; color: red;">로그아웃</a>
+<h2 th:text="${gridContext != null ? gridContext.gridName : '데이터 로드 실패'}">그리드 제목</h2>
+
+<div style="margin-bottom: 15px;">
+    사용자: <strong th:text="${#authentication.name}">User</strong>
+    (<span th:text="${#authentication.authorities}">Role</span>) |
+    <a href="/logout" style="color: red;">로그아웃</a>
 </div>
 
-<div class="control-panel" id="columnControls">
-    <strong>👁️ 표시 설정: </strong>
-</div>
+<div class="grid-container">
+    <div class="control-panel">
+        <h4>⚙️ 개인 화면 설정</h4>
+        <div id="columnControls" class="checkbox-group"></div>
+    </div>
 
-<table id="dataTable">
-    <thead><tr id="tableHead"></tr></thead>
-    <tbody id="tableBody"></tbody>
-</table>
+    <table id="dataTable">
+        <thead><tr id="tableHead"></tr></thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
 
 <script th:inline="javascript">
-    /* [주의] Thymeleaf 파싱 에러 방지를 위한 CDATA 주석 처리
-       또는 unescaped text 사용
+    /* [디버깅용 안전장치]
+       Thymeleaf 변수가 제대로 넘어오지 않을 경우를 대비해 기본값({}) 처리
     */
+    const context = [[${gridContext}]] || {};
 
-    // Controller에서 String으로 보냈다면 JSON.parse 필요
-    // (만약 Controller에서 객체(List/Map) 자체를 보냈다면 JSON.parse 제거해야 함)
-    const tableData = JSON.parse([[${tableDataJson}]]);
-    const allowedColumns = JSON.parse([[${allowedColumnsJson}]]);
-    const hiddenColumns = JSON.parse([[${hiddenColumnsJson}]]);
+    console.log("=== Server Data Debug ===");
+    console.log("Full Context:", context);
 
+    // 데이터가 비어있을 경우 에러 방지
+    const columnDefs = context.columnDefs || [];
+    const tableData = context.tableData || [];
+    const userConfig = context.userConfig || {};
+
+    // 사용자 설정값 추출 (없을 경우 기본값)
+    const userHiddenCols = userConfig.hiddenColumns || [];
+    const userColWidths = userConfig.columnWidths || {};
+
+    console.log("Columns:", columnDefs);
+    console.log("Data:", tableData);
+    console.log("User Hidden:", userHiddenCols);
+
+    // DOM 요소 가져오기
     const tableHead = document.getElementById('tableHead');
     const tableBody = document.getElementById('tableBody');
     const columnControls = document.getElementById('columnControls');
+
+    // 초기화 실행
+    document.addEventListener('DOMContentLoaded', () => {
+        if (columnDefs.length === 0) {
+            console.warn("컬럼 정의가 없습니다. DB(grid_master) 데이터를 확인하세요.");
+            columnControls.innerHTML = "<p>표시할 컬럼 정보가 없습니다.</p>";
+            return;
+        }
+        init();
+    });
 
     function init() {
         renderControls();
         renderTable();
     }
 
+    // 1. 컨트롤 패널(체크박스) 렌더링
     function renderControls() {
-        allowedColumns.forEach(col => {
+        columnDefs.forEach(col => {
             const label = document.createElement('label');
             const checkbox = document.createElement('input');
 
-            // [수정 2] 자바스크립트로 생성하는 태그는 상관없으나,
-            // 혹시 모르니 JS 로직은 그대로 둠.
             checkbox.type = 'checkbox';
-            checkbox.value = col;
-            checkbox.checked = !hiddenColumns.includes(col);
+            checkbox.value = col.field;
+
+            // userHiddenCols에 '포함되어 있지 않아야' 체크된 상태(Visible)
+            checkbox.checked = !userHiddenCols.includes(col.field);
 
             checkbox.addEventListener('change', (e) => {
-                toggleColumn(col, e.target.checked);
+                toggleColumn(col.field, e.target.checked);
             });
 
             label.appendChild(checkbox);
-            label.appendChild(document.createTextNode(" " + col));
+            // 공백 추가
+            label.appendChild(document.createTextNode("\u00A0" + col.header));
             columnControls.appendChild(label);
         });
     }
 
+    // 2. 테이블 렌더링
     function renderTable() {
-        // 헤더
-        allowedColumns.forEach(col => {
+        // Header
+        columnDefs.forEach(col => {
             const th = document.createElement('th');
-            th.textContent = col;
-            th.dataset.col = col;
-            if (hiddenColumns.includes(col)) th.classList.add('hidden-col');
+            th.textContent = col.header;
+            th.setAttribute('data-col', col.field); // dataset 호환성 강화
+
+            // 너비 설정 (사용자 설정 > 기본 설정)
+            const width = userColWidths[col.field] || col.width;
+            if(width) th.style.width = typeof width === 'number' ? width + "px" : width;
+
+            if(col.align) th.style.textAlign = col.align;
+
+            if (userHiddenCols.includes(col.field)) {
+                th.classList.add('user-hidden');
+            }
             tableHead.appendChild(th);
         });
 
-        // 바디
+        // Body
+        if (tableData.length === 0) {
+            const tr = document.createElement('tr');
+            const td = document.createElement('td');
+            td.colSpan = columnDefs.length;
+            td.textContent = "데이터가 존재하지 않습니다.";
+            td.style.textAlign = "center";
+            td.style.padding = "20px";
+            tr.appendChild(td);
+            tableBody.appendChild(tr);
+            return;
+        }
+
         tableData.forEach(row => {
             const tr = document.createElement('tr');
-            allowedColumns.forEach(col => {
+            columnDefs.forEach(col => {
                 const td = document.createElement('td');
-                td.textContent = row[col] !== null ? row[col] : "";
-                td.dataset.col = col;
-                if (hiddenColumns.includes(col)) td.classList.add('hidden-col');
+                // 데이터 값 가져오기 (null safe)
+                const val = row[col.field];
+
+                td.textContent = (val !== null && val !== undefined) ? val : "";
+                td.setAttribute('data-col', col.field);
+
+                if(col.align) td.style.textAlign = col.align;
+
+                if (userHiddenCols.includes(col.field)) {
+                    td.classList.add('user-hidden');
+                }
                 tr.appendChild(td);
             });
             tableBody.appendChild(tr);
         });
     }
 
-    function toggleColumn(colName, isVisible) {
-        const cells = document.querySelectorAll(`[data-col="${colName}"]`);
+    // 3. UI 토글 로직
+    function toggleColumn(field, isVisible) {
+        // [data-col="id"] 속성을 가진 모든 요소(th, td) 선택
+        const cells = document.querySelectorAll(`[data-col="${field}"]`);
         cells.forEach(cell => {
-            if (isVisible) cell.classList.remove('hidden-col');
-            else cell.classList.add('hidden-col');
+            if (isVisible) cell.classList.remove('user-hidden');
+            else cell.classList.add('user-hidden');
         });
     }
-
-    init();
 </script>
 </body>
 </html>

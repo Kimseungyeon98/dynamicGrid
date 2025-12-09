@@ -105,7 +105,6 @@ CREATE TABLE grid_user_config (
    5. 사용자 개인 설정 (Grid User Config)
    - 사용자가 UI에서 "보기 싫다"고 설정한 내용 (Hidden, Width 등)
    ============================================================ */
-
 -- 상황: 'user'(일반유저)는 화면이 좁아서 'ID', '모델명', '제조사'를 숨기고 싶어함.
 --      그리고 '자산명'을 좀 더 넓게(300px) 보고 싶어함.
 INSERT INTO grid_user_config (grid_code, user_id, config_json) VALUES
