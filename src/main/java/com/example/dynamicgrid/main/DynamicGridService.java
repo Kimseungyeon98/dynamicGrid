@@ -1,5 +1,6 @@
 package com.example.dynamicgrid.main;
 
+import com.example.dynamicgrid.dto.RoleConfigReq;
 import com.example.dynamicgrid.entity.*;
 import com.example.dynamicgrid.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -22,8 +23,89 @@ public class DynamicGridService {
     private final GridRoleConfigRepository gridRoleConfigRepository;
     private final GridUserConfigRepository gridUserConfigRepository;
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository; // Role 조회용 추가 필요
 
     private final ObjectMapper objectMapper;
+
+    // ==========================================
+    // [New] 권한 관리용: 모든 롤 목록 가져오기
+    // ==========================================
+    public List<String> getAllRoles() {
+        return roleRepository.findAll().stream()
+                .map(Role::getRoleName)
+                .collect(Collectors.toList());
+    }
+
+    // ==========================================
+    // [New] 권한 관리용: 특정 롤의 현재 설정 가져오기 (보이는 컬럼 반환)
+    // ==========================================
+    public List<String> getVisibleColumnsForRole(String gridCode, String targetRoleName) {
+        // 1. 전체 컬럼 가져오기
+        GridMaster gridMaster = gridMasterRepository.findById(gridCode)
+                .orElseThrow(() -> new RuntimeException("Grid not found"));
+
+        List<String> allFields = gridMaster.getDefaultColumnsJson().stream()
+                .map(col -> (String) col.get("field"))
+                .collect(Collectors.toList());
+
+        // 2. 숨겨진 컬럼 가져오기
+        List<String> invisibleFields = gridRoleConfigRepository
+                .findByGridMaster_GridCodeAndRole_RoleName(gridCode, targetRoleName)
+                .map(GridRoleConfig::getInvisibleColumnsJson)
+                .orElse(Collections.emptyList());
+
+        // 3. 전체 - 숨김 = 보이는 컬럼
+        return allFields.stream()
+                .filter(field -> !invisibleFields.contains(field))
+                .collect(Collectors.toList());
+    }
+
+    // ==========================================
+    // [New] 권한 설정 저장 (핵심 로직)
+    // ==========================================
+    @Transactional // 쓰기 작업이므로 필수
+    public void updateRoleConfig(RoleConfigReq req) {
+        // 1. 보안 체크: 누가 누구를 수정하려 하는가?
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String currentUsername = auth.getName();
+        User currentUser = userRepository.findByUsername(currentUsername).orElseThrow();
+        String currentRole = currentUser.getRole().getRoleName();
+
+        // [규칙] MANAGER는 ADMIN의 권한을 수정할 수 없음
+        if ("ROLE_MANAGER".equals(currentRole) && "ROLE_ADMIN".equals(req.getTargetRoleName())) {
+            throw new RuntimeException("접근 거부: 담당자는 관리자 권한을 수정할 수 없습니다.");
+        }
+
+        // [규칙] 일반 USER는 이 API 접근 불가 (Controller에서도 막겠지만 2중 체크)
+        if ("ROLE_USER".equals(currentRole)) {
+            throw new RuntimeException("접근 거부: 권한이 없습니다.");
+        }
+
+        // 2. 전체 컬럼 목록 조회
+        GridMaster gridMaster = gridMasterRepository.findById(req.getGridCode()).orElseThrow();
+        List<String> allFields = gridMaster.getDefaultColumnsJson().stream()
+                .map(col -> (String) col.get("field"))
+                .collect(Collectors.toList());
+
+        // 3. 로직 변환: (전체 컬럼) - (프론트에서 온 보이는 컬럼) = (DB에 저장할 숨길 컬럼)
+        List<String> columnsToHide = allFields.stream()
+                .filter(field -> !req.getVisibleColumns().contains(field))
+                .collect(Collectors.toList());
+
+        // 4. DB 저장 (Update or Insert)
+        GridRoleConfig config = gridRoleConfigRepository
+                .findByGridMaster_GridCodeAndRole_RoleName(req.getGridCode(), req.getTargetRoleName())
+                .orElseGet(() -> {
+                    // 없으면 새로 생성
+                    GridRoleConfig newConfig = new GridRoleConfig();
+                    newConfig.setGridMaster(gridMaster);
+                    newConfig.setRole(roleRepository.findById(req.getTargetRoleName()).orElseThrow());
+                    return newConfig;
+                });
+
+        config.setInvisibleColumnsJson(columnsToHide);
+        gridRoleConfigRepository.save(config);
+    }
 
     /**
      * 그리드 초기화에 필요한 모든 데이터(Data + Meta + Config)를 묶어서 반환

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <title>권한 관리자 페이지</title>
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+
+        .form-group { margin-bottom: 20px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; }
+        select { padding: 8px; width: 100%; max-width: 300px; }
+
+        .column-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; border: 1px solid #eee; padding: 15px; max-height: 400px; overflow-y: auto; }
+        .column-item { padding: 5px; border-bottom: 1px solid #f9f9f9; }
+        .column-item:hover { background-color: #f1f1f1; }
+
+        .btn { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; border-radius: 5px; font-size: 16px; }
+        .btn:hover { background-color: #0056b3; }
+        .btn-disabled { background-color: #ccc; cursor: not-allowed; }
+
+        .header-info { margin-bottom: 20px; padding: 10px; background: #e9ecef; border-radius: 5px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>🔒 권한별 컬럼 접근 제어</h2>
+
+    <div class="header-info">
+        접속자: <strong th:text="${#authentication.name}">Admin</strong>
+        (<span id="myRole" th:text="${#authentication.authorities[0].authority}">ROLE_ADMIN</span>)
+        <a href="/" style="float: right;">메인으로 돌아가기</a>
+    </div>
+
+    <div class="card">
+        <div class="form-group">
+            <label for="roleSelect">설정할 대상 권한 선택:</label>
+            <select id="roleSelect">
+                <option value="">-- 권한을 선택하세요 --</option>
+                <option th:each="role : ${roles}" th:value="${role}" th:text="${role}"></option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>보여줄 컬럼 선택 (체크 = 보임 / 해제 = 숨김)</label>
+            <div id="columnList" class="column-list">
+                <div th:each="col : ${gridContext.columnDefs}" class="column-item">
+                    <label style="font-weight: normal; cursor: pointer;">
+                        <input type="checkbox" class="col-check" th:value="${col.field}">
+                        <span th:text="${col.header}">컬럼명</span>
+                        <span style="color: #888; font-size: 0.8em;" th:text="'(' + ${col.field} + ')'"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div style="text-align: right;">
+            <button id="saveBtn" class="btn" onclick="saveConfig()">설정 저장</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const roleSelect = document.getElementById('roleSelect');
+    const myRole = document.getElementById('myRole').innerText;
+    const checkBoxes = document.querySelectorAll('.col-check');
+
+    // 권한 변경 시 서버에서 해당 권한의 설정 불러오기
+    roleSelect.addEventListener('change', async function() {
+        const targetRole = this.value;
+        if (!targetRole) return;
+
+        // [UI 방어 로직] 담당자(MANAGER)는 관리자(ADMIN)를 수정할 수 없음
+        if (myRole === 'ROLE_MANAGER' && targetRole === 'ROLE_ADMIN') {
+            alert("담당자는 관리자 권한을 수정할 수 없습니다.");
+            this.value = ""; // 선택 취소
+            return;
+        }
+
+        try {
+            // API 호출: 선택된 롤이 현재 '볼 수 있는' 컬럼 리스트 가져오기
+            const response = await fetch(`/admin/api/config/${targetRole}`);
+            const visibleColumns = await response.json();
+
+            // 체크박스 상태 업데이트
+            checkBoxes.forEach(cb => {
+                // 가져온 리스트에 포함되어 있으면 체크, 없으면 해제
+                cb.checked = visibleColumns.includes(cb.value);
+            });
+        } catch (err) {
+            console.error(err);
+            alert("설정을 불러오는 중 오류가 발생했습니다.");
+        }
+    });
+
+    // 저장 로직
+    async function saveConfig() {
+        const targetRole = roleSelect.value;
+        if (!targetRole) {
+            alert("설정할 권한을 먼저 선택해주세요.");
+            return;
+        }
+
+        // 체크된 컬럼들만 수집
+        const visibleCols = [];
+        checkBoxes.forEach(cb => {
+            if (cb.checked) visibleCols.push(cb.value);
+        });
+
+        // 전송 데이터 생성
+        const data = {
+            gridCode: "FACILITY_ASSET_GRID",
+            targetRoleName: targetRole,
+            visibleColumns: visibleCols
+        };
+
+        try {
+            const res = await fetch('/admin/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                alert("성공적으로 저장되었습니다! \n해당 사용자가 새로고침하면 적용됩니다.");
+            } else {
+                const errMsg = await res.text();
+                alert("저장 실패: " + errMsg);
+            }
+        } catch (err) {
+            alert("서버 통신 오류");
+        }
+    }
+</script>
+</body>
+</html>
