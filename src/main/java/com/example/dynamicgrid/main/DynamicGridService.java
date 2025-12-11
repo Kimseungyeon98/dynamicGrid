@@ -1,6 +1,7 @@
 package com.example.dynamicgrid.main;
 
 import com.example.dynamicgrid.dto.RoleConfigReq;
+import com.example.dynamicgrid.dto.UserConfigReq;
 import com.example.dynamicgrid.entity.*;
 import com.example.dynamicgrid.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -165,4 +166,43 @@ public class DynamicGridService {
 
         return resultMap;
     }
+
+    // [New] 사용자 개인 설정 저장 (Auto-Save)
+    @Transactional
+    public void saveUserConfig(String username, UserConfigReq req) {
+        // 1. 사용자 조회
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 2. 그리드 마스터 조회
+        GridMaster gridMaster = gridMasterRepository.findById(req.getGridCode())
+                .orElseThrow(() -> new RuntimeException("Grid not found"));
+
+        // 3. 기존 설정 가져오기 (없으면 새로 생성)
+        GridUserConfig userConfig = gridUserConfigRepository
+                .findByGridMaster_GridCodeAndUser_Username(req.getGridCode(), username)
+                .orElseGet(() -> {
+                    GridUserConfig newConfig = new GridUserConfig();
+                    newConfig.setGridMaster(gridMaster);
+                    newConfig.setUser(user);
+                    newConfig.setConfigJson(new HashMap<>()); // 빈 맵으로 초기화
+                    return newConfig;
+                });
+
+        // 4. JSON 데이터 업데이트 (기존 너비 설정 등은 유지하고 hiddenColumns만 교체)
+        Map<String, Object> currentJson = userConfig.getConfigJson();
+        if (currentJson == null) {
+            currentJson = new HashMap<>();
+        }
+
+        // "hiddenColumns" 키의 값을 교체
+        currentJson.put("hiddenColumns", req.getHiddenColumns());
+
+        // 5. 엔티티에 다시 세팅 (Dirty Checking에 의해 자동 저장되지만 명시적으로 set)
+        userConfig.setConfigJson(currentJson);
+
+        // (신규 생성일 경우를 위해 save 호출)
+        gridUserConfigRepository.save(userConfig);
+    }
+
 }

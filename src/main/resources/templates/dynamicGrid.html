@@ -91,6 +91,37 @@
         renderTable();
     }
 
+    // [New] 변경사항이 생기면 서버로 전송하는 함수
+    async function saveUserPreference() {
+        // 1. 현재 체크가 '해제된'(=숨겨진) 컬럼들을 수집
+        const hiddenCols = [];
+        const checkboxes = document.querySelectorAll('#columnControls input[type="checkbox"]');
+
+        checkboxes.forEach(cb => {
+            if (!cb.checked) {
+                hiddenCols.push(cb.value); // 체크 해제된 값 수집
+            }
+        });
+
+        // 2. 전송할 데이터
+        const payload = {
+            gridCode: "FACILITY_ASSET_GRID",
+            hiddenColumns: hiddenCols
+        };
+
+        // 3. 비동기 전송 (사용자는 기다릴 필요 없음 - Fire and Forget)
+        try {
+            await fetch('/api/user/config/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            console.log("Auto-saved:", hiddenCols);
+        } catch (err) {
+            console.error("Save failed:", err);
+        }
+    }
+
     // 1. 컨트롤 패널(체크박스) 렌더링
     function renderControls() {
         columnDefs.forEach(col => {
@@ -104,7 +135,10 @@
             checkbox.checked = !userHiddenCols.includes(col.field);
 
             checkbox.addEventListener('change', (e) => {
+                // 1. 화면 즉시 반영
                 toggleColumn(col.field, e.target.checked);
+                // 2. [New] 서버 저장 (자동 저장)
+                saveUserPreference();
             });
 
             label.appendChild(checkbox);
