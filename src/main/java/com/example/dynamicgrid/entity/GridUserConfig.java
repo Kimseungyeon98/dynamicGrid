@@ -3,6 +3,9 @@ package com.example.dynamicgrid.entity;
 import com.example.dynamicgrid.converter.MapJsonConverter;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.util.Map;
 
 @Entity
@@ -24,8 +27,8 @@ public class GridUserConfig {
     private User user;
 
     // JSONB 컬럼 -> Map<String, Object> 자동 변환
-    // {"hidden": ["id"], "width": {"name": 200}}
-    @Convert(converter = MapJsonConverter.class)
+    // @Convert(converter = MapJsonConverter.class) <-- 제거
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> configJson;
 }

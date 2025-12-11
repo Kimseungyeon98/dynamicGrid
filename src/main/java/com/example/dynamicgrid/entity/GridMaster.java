@@ -3,6 +3,9 @@ package com.example.dynamicgrid.entity;
 import com.example.dynamicgrid.converter.MapListJsonConverter;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.util.List;
 import java.util.Map;
 
@@ -18,8 +21,8 @@ public class GridMaster {
     private String gridName;
 
     // JSONB 컬럼 -> List<Map> 자동 변환
-    // [{"field": "id", ...}, ...]
-    @Convert(converter = MapListJsonConverter.class)
+    // @Convert(converter = MapListJsonConverter.class) <-- 제거
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private List<Map<String, Object>> defaultColumnsJson;
 }
