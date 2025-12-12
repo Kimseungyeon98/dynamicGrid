@@ -10,6 +10,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StopWatch;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -112,7 +113,10 @@ public class DynamicGridService {
      * 그리드 초기화에 필요한 모든 데이터(Data + Meta + Config)를 묶어서 반환
      */
     public Map<String, Object> getGridContext(String gridCode) {
+        StopWatch stopWatch = new StopWatch();
+
         // 1. 현재 로그인한 사용자 및 권한 확인
+        stopWatch.start("Fetching Metadata & Config");        // 1. 설정 조회 구간
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String username = auth.getName();
 
@@ -120,8 +124,10 @@ public class DynamicGridService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found: " + username));
         String roleName = user.getRole().getRoleName();
+        stopWatch.stop();
 
         // 2. 그리드 마스터 정보 조회 (전체 컬럼 정의)
+        stopWatch.start("Fetching All Data (DB)");              // 2~5. 데이터 조회 구간
         GridMaster gridMaster = gridMasterRepository.findById(gridCode)
                 .orElseThrow(() -> new RuntimeException("Grid definition not found: " + gridCode));
 
@@ -144,8 +150,10 @@ public class DynamicGridService {
                 .findByGridMaster_GridCodeAndUser_Username(gridCode, username)
                 .map(GridUserConfig::getConfigJson)
                 .orElse(Collections.emptyMap()); // 설정 없으면 빈 객체
+        stopWatch.stop();
 
         // 6. 실제 데이터 조회 및 보안 필터링
+        stopWatch.start("Filtering & Converting (Java Memory)");            // 6. 필터링 로직 구간 (CPU 부하 예상 지점)
         List<FacilityAsset> assets = assetRepository.findAll();
         List<Map<String, Object>> filteredData = assets.stream().map(asset -> {
             // Entity -> Map 변환
@@ -156,6 +164,9 @@ public class DynamicGridService {
 
             return map;
         }).collect(Collectors.toList());
+        stopWatch.stop();
+
+        System.out.println(stopWatch.prettyPrint());
 
         // 7. 결과 맵핑
         Map<String, Object> resultMap = new HashMap<>();

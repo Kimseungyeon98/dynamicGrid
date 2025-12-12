@@ -146,3 +146,28 @@ INSERT INTO facility_asset (asset_code, asset_name, category, location, model_na
 ('NET-SW-01', '메인 스위치 허브', '통신설비', 'MDF실', 'Cisco-9200', 'Cisco', '2023-01-10', '정상', 4500000, '네트워크 유지보수 포함'),
 ('GEN-001', '비상발전기', '전기설비', '별관 발전기실', 'Doosan-V12', '두산밥캣', '2015-04-12', '정상', 80000000, '매월 무부하 운전 실시'),
 ('AUTO-DR-01', '주차장 자동문', '건축설비', '주차장 입구', 'Speed-Door', 'KONE', '2022-09-09', '수리중', 8000000, '센서 오작동 빈번');
+
+
+
+
+-- 1. 성능 테스트용 대량 데이터 생성 함수
+DO $$
+DECLARE
+i INT;
+BEGIN
+    -- 기존 데이터 10만 건 생성 (generate_series 이용)
+    -- 실제 컬럼은 10개지만, 로직 부하를 테스트하기엔 충분합니다.
+INSERT INTO facility_asset (asset_code, asset_name, category, location, model_name, manufacturer, install_date, status, purchase_cost, contract_details)
+SELECT
+    'TEST-ASSET-' || gs,
+    '성능 테스트 자산 ' || gs,
+    CASE WHEN gs % 3 = 0 THEN '기계' WHEN gs % 3 = 1 THEN '전기' ELSE '소방' END,
+    'B' || (gs % 5) || '층',
+    'MODEL-' || gs,
+    'Manufacturer-' || (gs % 10),
+    CURRENT_DATE - (gs % 3650), -- 최근 10년 내 랜덤 날짜
+    CASE WHEN gs % 10 = 0 THEN '고장' ELSE '정상' END,
+    (gs * 1000)::numeric,
+    '계약 내용 상세 데이터입니다. 길이가 길어질수록 메모리를 많이 차지합니다...' || gs
+FROM generate_series(1, 100000) AS gs; -- 10만 건 생성
+END $$;
