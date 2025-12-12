@@ -25,6 +25,13 @@
 
         /* 숨김 처리 클래스 */
         .user-hidden { display: none; }
+
+        /* 페이지네이션 스타일 */
+        .pagination { display: flex; justify-content: center; margin-top: 20px; gap: 5px; }
+        .page-btn { padding: 8px 12px; border: 1px solid #ddd; background: white; cursor: pointer; border-radius: 4px; }
+        .page-btn:hover { background: #f0f0f0; }
+        .page-btn.active { background: #007bff; color: white; border-color: #007bff; }
+        .page-btn:disabled { background: #eee; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -47,6 +54,8 @@
         <thead><tr id="tableHead"></tr></thead>
         <tbody id="tableBody"></tbody>
     </table>
+
+    <div class="pagination" id="paginationControls"></div>
 </div>
 
 <script th:inline="javascript">
@@ -54,62 +63,149 @@
        Thymeleaf 변수가 제대로 넘어오지 않을 경우를 대비해 기본값({}) 처리
     */
     const context = [[${gridContext}]] || {};
-
-    console.log("=== Server Data Debug ===");
-    console.log("Full Context:", context);
-
     // 데이터가 비어있을 경우 에러 방지
     const columnDefs = context.columnDefs || [];
     const tableData = context.tableData || [];
     const userConfig = context.userConfig || {};
-
     // 사용자 설정값 추출 (없을 경우 기본값)
     const userHiddenCols = userConfig.hiddenColumns || [];
     const userColWidths = userConfig.columnWidths || {};
 
-    console.log("Columns:", columnDefs);
-    console.log("Data:", tableData);
-    console.log("User Hidden:", userHiddenCols);
+    // 페이징 상태 관리 변수
+    let currentPage = 0;
+    const pageSize = 20; // 한 페이지에 보여줄 개수
+    let totalPages = 0;
 
     // DOM 요소 가져오기
     const tableHead = document.getElementById('tableHead');
     const tableBody = document.getElementById('tableBody');
-    const columnControls = document.getElementById('columnControls');
+    const paginationControls = document.getElementById('paginationControls');
 
     // 초기화 실행
     document.addEventListener('DOMContentLoaded', () => {
-        if (columnDefs.length === 0) {
-            console.warn("컬럼 정의가 없습니다. DB(grid_master) 데이터를 확인하세요.");
-            columnControls.innerHTML = "<p>표시할 컬럼 정보가 없습니다.</p>";
-            return;
-        }
         init();
+        // [V4.0] 초기 데이터 로드 (페이지 0)
+        loadGridData(0);
     });
 
     function init() {
-        renderControls();
-        renderTable();
+        renderControls(); // 체크박스 렌더링 (기존 동일)
+        renderHeader();   // 헤더 렌더링 (기존 renderTable에서 분리)
     }
+
+    // [New] 서버에서 데이터 가져오기
+    async function loadGridData(page) {
+        try {
+            // 로딩 표시 (선택사항)
+            tableBody.innerHTML = '<tr><td colspan="100" style="text-align:center;">데이터 로딩중...</td></tr>';
+
+            const response = await fetch(`/api/grid/data?gridCode=FACILITY_ASSET_GRID&page=${page}&size=${pageSize}`);
+            const result = await response.json();
+
+            const data = result.content; // 실제 데이터 리스트
+            currentPage = result.number;
+            totalPages = result.totalPages;
+
+            // 테이블 다시 그리기
+            renderBody(data);
+
+            // 페이지네이션 버튼 다시 그리기
+            renderPagination();
+
+        } catch (err) {
+            console.error(err);
+            tableBody.innerHTML = '<tr><td colspan="100" style="text-align:center; color:red;">데이터 로드 실패</td></tr>';
+        }
+    }
+
+    // 헤더 그리기 (한 번만 실행하면 됨)
+    function renderHeader() {
+        tableHead.innerHTML = "";
+        columnDefs.forEach(col => {
+            const th = document.createElement('th');
+            th.textContent = col.header;
+            th.dataset.col = col.field;
+            const width = userColWidths[col.field] || col.width;
+            if(width) th.style.width = width + "px";
+            if (userHiddenCols.includes(col.field)) th.classList.add('user-hidden');
+            tableHead.appendChild(th);
+        });
+    }
+
+    // 바디 그리기 (데이터 바뀔 때마다 실행)
+    function renderBody(data) {
+        tableBody.innerHTML = ""; // 기존 데이터 삭제
+
+        if (!data || data.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="100" style="text-align:center;">데이터가 없습니다.</td></tr>';
+            return;
+        }
+
+        data.forEach(row => {
+            const tr = document.createElement('tr');
+            columnDefs.forEach(col => {
+                const td = document.createElement('td');
+                const val = row[col.field];
+                td.textContent = (val !== null && val !== undefined) ? val : "";
+                td.dataset.col = col.field;
+                if(col.align) td.style.textAlign = col.align;
+                if (userHiddenCols.includes(col.field)) td.classList.add('user-hidden');
+                tr.appendChild(td);
+            });
+            tableBody.appendChild(tr);
+        });
+    }
+
+    // [New] 페이지네이션 버튼 렌더링 (간단한 버전)
+    function renderPagination() {
+        paginationControls.innerHTML = "";
+
+        // 1. 이전 버튼
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = "이전";
+        prevBtn.className = "page-btn";
+        prevBtn.disabled = currentPage === 0;
+        prevBtn.onclick = () => loadGridData(currentPage - 1);
+        paginationControls.appendChild(prevBtn);
+
+        // 2. 페이지 번호 (현재 페이지 주변 5개만 표시)
+        const startPage = Math.max(0, currentPage - 2);
+        const endPage = Math.min(totalPages - 1, currentPage + 2);
+
+        for (let i = startPage; i <= endPage; i++) {
+            const btn = document.createElement('button');
+            btn.textContent = i + 1; // 0부터 시작하므로 +1
+            btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
+            btn.onclick = () => loadGridData(i);
+            paginationControls.appendChild(btn);
+        }
+
+        // 3. 다음 버튼
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = "다음";
+        nextBtn.className = "page-btn";
+        nextBtn.disabled = currentPage >= totalPages - 1;
+        nextBtn.onclick = () => loadGridData(currentPage + 1);
+        paginationControls.appendChild(nextBtn);
+    }
+
 
     // [New] 변경사항이 생기면 서버로 전송하는 함수
     async function saveUserPreference() {
-        // 1. 현재 체크가 '해제된'(=숨겨진) 컬럼들을 수집
         const hiddenCols = [];
         const checkboxes = document.querySelectorAll('#columnControls input[type="checkbox"]');
 
         checkboxes.forEach(cb => {
             if (!cb.checked) {
-                hiddenCols.push(cb.value); // 체크 해제된 값 수집
+                hiddenCols.push(cb.value);
             }
         });
 
-        // 2. 전송할 데이터
         const payload = {
             gridCode: "FACILITY_ASSET_GRID",
             hiddenColumns: hiddenCols
         };
 
-        // 3. 비동기 전송 (사용자는 기다릴 필요 없음 - Fire and Forget)
         try {
             await fetch('/api/user/config/save', {
                 method: 'POST',
@@ -130,81 +226,21 @@
 
             checkbox.type = 'checkbox';
             checkbox.value = col.field;
-
-            // userHiddenCols에 '포함되어 있지 않아야' 체크된 상태(Visible)
             checkbox.checked = !userHiddenCols.includes(col.field);
 
             checkbox.addEventListener('change', (e) => {
-                // 1. 화면 즉시 반영
                 toggleColumn(col.field, e.target.checked);
-                // 2. [New] 서버 저장 (자동 저장)
                 saveUserPreference();
             });
 
             label.appendChild(checkbox);
-            // 공백 추가
             label.appendChild(document.createTextNode("\u00A0" + col.header));
             columnControls.appendChild(label);
         });
     }
 
-    // 2. 테이블 렌더링
-    function renderTable() {
-        // Header
-        columnDefs.forEach(col => {
-            const th = document.createElement('th');
-            th.textContent = col.header;
-            th.setAttribute('data-col', col.field); // dataset 호환성 강화
-
-            // 너비 설정 (사용자 설정 > 기본 설정)
-            const width = userColWidths[col.field] || col.width;
-            if(width) th.style.width = typeof width === 'number' ? width + "px" : width;
-
-            if(col.align) th.style.textAlign = col.align;
-
-            if (userHiddenCols.includes(col.field)) {
-                th.classList.add('user-hidden');
-            }
-            tableHead.appendChild(th);
-        });
-
-        // Body
-        if (tableData.length === 0) {
-            const tr = document.createElement('tr');
-            const td = document.createElement('td');
-            td.colSpan = columnDefs.length;
-            td.textContent = "데이터가 존재하지 않습니다.";
-            td.style.textAlign = "center";
-            td.style.padding = "20px";
-            tr.appendChild(td);
-            tableBody.appendChild(tr);
-            return;
-        }
-
-        tableData.forEach(row => {
-            const tr = document.createElement('tr');
-            columnDefs.forEach(col => {
-                const td = document.createElement('td');
-                // 데이터 값 가져오기 (null safe)
-                const val = row[col.field];
-
-                td.textContent = (val !== null && val !== undefined) ? val : "";
-                td.setAttribute('data-col', col.field);
-
-                if(col.align) td.style.textAlign = col.align;
-
-                if (userHiddenCols.includes(col.field)) {
-                    td.classList.add('user-hidden');
-                }
-                tr.appendChild(td);
-            });
-            tableBody.appendChild(tr);
-        });
-    }
-
     // 3. UI 토글 로직
     function toggleColumn(field, isVisible) {
-        // [data-col="id"] 속성을 가진 모든 요소(th, td) 선택
         const cells = document.querySelectorAll(`[data-col="${field}"]`);
         cells.forEach(cell => {
             if (isVisible) cell.classList.remove('user-hidden');

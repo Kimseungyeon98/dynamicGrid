@@ -6,6 +6,8 @@ import com.example.dynamicgrid.entity.*;
 import com.example.dynamicgrid.repository.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -214,6 +216,42 @@ public class DynamicGridService {
 
         // (신규 생성일 경우를 위해 save 호출)
         gridUserConfigRepository.save(userConfig);
+    }
+
+    // [New] 데이터만 페이징해서 가져오는 메서드
+    public Map<String, Object> getGridData(String gridCode, Pageable pageable) {
+        // 1. 보안 & 설정 조회 (기존 로직 재사용 - 메서드 분리 추천하지만 여기선 인라인으로 처리)
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String username = auth.getName();
+        User user = userRepository.findByUsername(username).orElseThrow();
+        String roleName = user.getRole().getRoleName();
+
+        // 2. 숨겨야 할 컬럼 조회 (GridRoleConfig)
+        List<String> invisibleColumns = gridRoleConfigRepository
+                .findByGridMaster_GridCodeAndRole_RoleName(gridCode, roleName)
+                .map(GridRoleConfig::getInvisibleColumnsJson)
+                .orElse(Collections.emptyList());
+
+        // 3. [핵심] DB에서 페이징 처리하여 조회 (전체 조회가 아님!)
+        // select * from asset limit 20 offset 0; 쿼리가 실행됨
+        Page<FacilityAsset> pageResult = assetRepository.findAll(pageable);
+
+        // 4. 데이터 필터링 (가져온 20개에 대해서만 수행하므로 매우 빠름)
+        List<Map<String, Object>> filteredContent = pageResult.getContent().stream().map(asset -> {
+            Map<String, Object> map = objectMapper.convertValue(asset, Map.class);
+            invisibleColumns.forEach(map::remove);
+            return map;
+        }).collect(Collectors.toList());
+
+        // 5. 결과 반환 (데이터 + 페이지 정보)
+        Map<String, Object> response = new HashMap<>();
+        response.put("content", filteredContent);      // 실제 데이터 (20개)
+        response.put("totalElements", pageResult.getTotalElements()); // 전체 데이터 수 (10만개)
+        response.put("totalPages", pageResult.getTotalPages());       // 전체 페이지 수
+        response.put("number", pageResult.getNumber());               // 현재 페이지 번호 (0부터 시작)
+        response.put("size", pageResult.getSize());                   // 페이지 크기
+
+        return response;
     }
 
 }

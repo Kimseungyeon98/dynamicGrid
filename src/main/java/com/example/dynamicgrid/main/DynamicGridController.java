@@ -2,6 +2,9 @@ package com.example.dynamicgrid.main;
 
 import com.example.dynamicgrid.dto.UserConfigReq;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -9,6 +12,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
 import java.util.Map;
 
 @Controller
@@ -22,13 +26,29 @@ public class DynamicGridController {
         // DB에 저장된 그리드 코드 (예: FACILITY_ASSET_GRID)
         String gridCode = "FACILITY_ASSET_GRID";
 
-        // Service에서 데이터+설정 모두 가져오기
-        Map<String, Object> gridContext = service.getGridContext(gridCode);
+        // getGridContext 내부에서 tableData 조회 로직은 제거하거나, 빈 리스트를 반환하도록 수정했다고 가정
+        // 혹은, 첫 페이지(0페이지)만 포함해서 보낼 수도 있음.
+        // 여기서는 깔끔하게 V4.0 방식인 "껍데기만 가고 데이터는 JS가 부른다"로 갑니다.
 
-        // Thymeleaf로 전달
-        model.addAttribute("gridContext", gridContext);
+        Map<String, Object> context = service.getGridContext(gridCode); // 여기선 컬럼정보, 유저설정만 가져옴
+        context.put("tableData", Collections.emptyList()); // 초기 데이터는 비워둠
 
+        model.addAttribute("gridContext", context);
         return "dynamicGrid";
+    }
+
+    // 2. [New] 데이터 조회용 API
+    @GetMapping("/api/grid/data")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> getGridData(
+            @RequestParam String gridCode,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        // ID 기준 내림차순 정렬 (최신순)
+        Pageable pageable = PageRequest.of(page, size, Sort.by("id").descending());
+        Map<String, Object> result = service.getGridData(gridCode, pageable);
+        return ResponseEntity.ok(result);
     }
 
     // [New] 사용자 설정 저장 API
