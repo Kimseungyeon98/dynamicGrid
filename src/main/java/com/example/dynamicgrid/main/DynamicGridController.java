@@ -43,11 +43,19 @@ public class DynamicGridController {
     public ResponseEntity<Map<String, Object>> getGridData(
             @RequestParam String gridCode,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String keyword, // [New] 검색어
+            @RequestParam(required = false, defaultValue = "id") String sortField, // [New] 정렬 필드
+            @RequestParam(required = false, defaultValue = "DESC") String sortDir     // [New] 정렬 방향
     ) {
-        // ID 기준 내림차순 정렬 (최신순)
-        Pageable pageable = PageRequest.of(page, size, Sort.by("id").descending());
-        Map<String, Object> result = service.getGridData(gridCode, pageable);
+        // 정렬 객체 생성
+        Sort sort = sortDir.equalsIgnoreCase("ASC") ?
+                Sort.by(sortField).ascending() :
+                Sort.by(sortField).descending();
+
+        Pageable pageable = PageRequest.of(page, size, sort);
+
+        Map<String, Object> result = service.getGridData(gridCode, keyword, pageable);
         return ResponseEntity.ok(result);
     }
 

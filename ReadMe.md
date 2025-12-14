@@ -30,6 +30,8 @@ StopWatch: 2.8668209 seconds
 |0.7370659|26%|Fetching Metadata & Config|
 |0.1341037|05%|Fetching All Data (DB)|
 |1.9956513|70%|Filtering & Converting (Java Memory)|
-
+# v5.0 2025/12/14 12:35
+- 검색 기능 구현
+- 정렬 기능 구현
 
 ## TodoList

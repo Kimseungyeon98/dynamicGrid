@@ -219,7 +219,7 @@ public class DynamicGridService {
     }
 
     // [New] 데이터만 페이징해서 가져오는 메서드
-    public Map<String, Object> getGridData(String gridCode, Pageable pageable) {
+    public Map<String, Object> getGridData(String gridCode, String keyword, Pageable pageable) {
         // 1. 보안 & 설정 조회 (기존 로직 재사용 - 메서드 분리 추천하지만 여기선 인라인으로 처리)
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String username = auth.getName();
@@ -234,7 +234,8 @@ public class DynamicGridService {
 
         // 3. [핵심] DB에서 페이징 처리하여 조회 (전체 조회가 아님!)
         // select * from asset limit 20 offset 0; 쿼리가 실행됨
-        Page<FacilityAsset> pageResult = assetRepository.findAll(pageable);
+        // [수정] 검색 기능이 포함된 Repository 메서드 호출
+        Page<FacilityAsset> pageResult = assetRepository.searchAssets(keyword, pageable);
 
         // 4. 데이터 필터링 (가져온 20개에 대해서만 수행하므로 매우 빠름)
         List<Map<String, Object>> filteredContent = pageResult.getContent().stream().map(asset -> {
